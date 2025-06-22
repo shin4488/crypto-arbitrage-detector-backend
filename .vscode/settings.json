@@ -8,6 +8,9 @@
   "files.trimTrailingWhitespace": true,
   "files.trimFinalNewlines": true,
   "files.insertFinalNewline": true,
+  "[markdown]": {
+    "files.trimTrailingWhitespace": false
+  },
   "[go]": {
     "editor.defaultFormatter": "golang.go",
     "editor.formatOnSave": true,
@@ -27,4 +30,4 @@
   "go.vetOnSave": "package",
   "go.testOnSave": false,
   "go.buildOnSave": "off"
-} 
+}
