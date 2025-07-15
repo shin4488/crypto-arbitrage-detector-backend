@@ -68,4 +68,4 @@ func GetDefaultConfig() *Config {
 		},
 		Pairs: []string{"BTC/USDT", "ETH/USDT"},
 	}
-} 
+}

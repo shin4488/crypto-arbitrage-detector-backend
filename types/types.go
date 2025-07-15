@@ -1,6 +1,9 @@
 package types
 
-import "github.com/shopspring/decimal"
+import (
+	"github.com/shopspring/decimal"
+	"log"
+)
 
 // ArbitrageData represents arbitrage opportunity data
 type ArbitrageData struct {
@@ -37,6 +40,13 @@ func (a *ArbitrageData) ToJSON() ArbitrageDataJSON {
 	amount, _ := a.Amount.Float64()
 	spread, _ := a.Spread.Float64()
 	spreadRatio, _ := a.SpreadRatio.Float64()
+
+	// デバッグログ: decimal -> float64 変換の精度チェック
+	log.Printf("🔢 ToJSON conversion - %s:", a.Pair)
+	log.Printf("🔢   BuyPrice: %s -> %f", a.BuyPrice.String(), buyPrice)
+	log.Printf("🔢   SellPrice: %s -> %f", a.SellPrice.String(), sellPrice)
+	log.Printf("🔢   Amount: %s -> %f", a.Amount.String(), amount)
+	log.Printf("🔢   Spread: %s -> %f", a.Spread.String(), spread)
 
 	return ArbitrageDataJSON{
 		Pair:         a.Pair,
@@ -77,4 +87,4 @@ type ExchangeConfig struct {
 	RestUrl  string        `json:"rest_url"`
 	Pairs    []TradingPair `json:"pairs"`
 	Enabled  bool          `json:"enabled"`
-} 
+}
