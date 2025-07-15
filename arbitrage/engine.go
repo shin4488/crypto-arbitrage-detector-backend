@@ -36,6 +36,10 @@ func (e *Engine) UpdatePrice(priceData types.PriceData) {
 	symbol := priceData.Symbol
 	exchange := priceData.Exchange
 
+	// Debug log for price data reception
+	log.Printf("📊 Received price data: %s %s %s - Price: %s, Quantity: %s", 
+		exchange, symbol, priceData.Side, priceData.Price.String(), priceData.Quantity.String())
+
 	// Update appropriate map based on side
 	if priceData.Side == "bid" {
 		// Initialize symbol map if not exists
@@ -113,14 +117,9 @@ func (e *Engine) checkArbitrage(symbol string) {
 	if okxAsk != nil && binanceBid != nil {
 		if binanceBid.Price.GreaterThan(okxAsk.Price) {
 			spread := binanceBid.Price.Sub(okxAsk.Price)
-			// Create arbitrage opportunity with minimal spread threshold (0.01%)
-			minSpreadRatio := decimal.NewFromFloat(0.0001)
-			spreadRatio := spread.Div(okxAsk.Price)
-			
-			if spreadRatio.GreaterThan(minSpreadRatio) {
-				arb := e.createArbitrageData(symbol, "OKX", "Binance", okxAsk.Price, binanceBid.Price, spread, okxAsk.Quantity, binanceBid.Quantity)
-				availableArbitrages = append(availableArbitrages, arb)
-			}
+			// Create arbitrage opportunity (no minimum threshold)
+			arb := e.createArbitrageData(symbol, "OKX", "Binance", okxAsk.Price, binanceBid.Price, spread, okxAsk.Quantity, binanceBid.Quantity)
+			availableArbitrages = append(availableArbitrages, arb)
 		}
 	}
 	
@@ -128,14 +127,9 @@ func (e *Engine) checkArbitrage(symbol string) {
 	if binanceAsk != nil && okxBid != nil {
 		if okxBid.Price.GreaterThan(binanceAsk.Price) {
 			spread := okxBid.Price.Sub(binanceAsk.Price)
-			// Create arbitrage opportunity with minimal spread threshold (0.01%)
-			minSpreadRatio := decimal.NewFromFloat(0.0001)
-			spreadRatio := spread.Div(binanceAsk.Price)
-			
-			if spreadRatio.GreaterThan(minSpreadRatio) {
-				arb := e.createArbitrageData(symbol, "Binance", "OKX", binanceAsk.Price, okxBid.Price, spread, binanceAsk.Quantity, okxBid.Quantity)
-				availableArbitrages = append(availableArbitrages, arb)
-			}
+			// Create arbitrage opportunity (no minimum threshold)
+			arb := e.createArbitrageData(symbol, "Binance", "OKX", binanceAsk.Price, okxBid.Price, spread, binanceAsk.Quantity, okxBid.Quantity)
+			availableArbitrages = append(availableArbitrages, arb)
 		}
 	}
 	
@@ -150,70 +144,29 @@ func (e *Engine) checkArbitrage(symbol string) {
 		}
 	}
 
-	// If no arbitrage found, always send current market data for display
+	// If no arbitrage found, send no-chance notification (don't show negative profits)
 	if bestArb == nil {
-		// Create display data with current best available prices
-		var buyPrice, sellPrice decimal.Decimal
-		var buyExchange, sellExchange string
-		var amount decimal.Decimal
-		
-		if binanceAsk != nil && okxBid != nil {
-			buyPrice = binanceAsk.Price
-			sellPrice = okxBid.Price  
-			buyExchange = "Binance"
-			sellExchange = "OKX"
-			amount = binanceAsk.Quantity
-			if okxBid.Quantity.LessThan(amount) {
-				amount = okxBid.Quantity
-			}
-		} else if okxAsk != nil && binanceBid != nil {
-			buyPrice = okxAsk.Price
-			sellPrice = binanceBid.Price
-			buyExchange = "OKX"
-			sellExchange = "Binance"
-			amount = okxAsk.Quantity
-			if binanceBid.Quantity.LessThan(amount) {
-				amount = binanceBid.Quantity
-			}
-		} else {
-			// No sufficient data, send no-chance notification
-			noChanceData := &types.ArbitrageData{
-				Pair:         symbol,
-				BuyExchange:  "",
-				SellExchange: "",
-				BuyPrice:     decimal.Zero,
-				SellPrice:    decimal.Zero,
-				Amount:       decimal.Zero,
-				Spread:       decimal.Zero,
-				SpreadRatio:  decimal.Zero,
-				Currency:     extractQuoteCurrency(symbol),
-				NoChance:     true,
-			}
-			
-			// Always send updates to ensure UI responsiveness
-			e.lastSentArb[symbol] = *noChanceData
-			e.notifySubscribers(*noChanceData)
-			return
-		}
-		
-		// Calculate spread (negative for losses)
-		spread := sellPrice.Sub(buyPrice)
-		
-		bestArb = &types.ArbitrageData{
+		// No sufficient data, send no-chance notification
+		noChanceData := &types.ArbitrageData{
 			Pair:         symbol,
-			BuyExchange:  buyExchange,
-			SellExchange: sellExchange,
-			BuyPrice:     buyPrice,
-			SellPrice:    sellPrice,
-			Amount:       amount,
-			Spread:       spread,
-			SpreadRatio:  spread.Div(buyPrice),
+			BuyExchange:  "",
+			SellExchange: "",
+			BuyPrice:     decimal.Zero,
+			SellPrice:    decimal.Zero,
+			Amount:       decimal.Zero,
+			Spread:       decimal.Zero,
+			SpreadRatio:  decimal.Zero,
 			Currency:     extractQuoteCurrency(symbol),
-			NoChance:     false,
+			NoChance:     true,
 		}
+		
+		// Always send updates to ensure UI responsiveness
+		e.lastSentArb[symbol] = *noChanceData
+		e.notifySubscribers(*noChanceData)
+		return
 	}
 
-	// Always send updates to ensure UI responsiveness (removed shouldSend check)
+	// Always send arbitrage data to ensure UI responsiveness
 	now := time.Now()
 	
 	if bestArb.Spread.GreaterThan(decimal.Zero) {
@@ -225,20 +178,33 @@ func (e *Engine) checkArbitrage(symbol string) {
 			bestArb.SellExchange,
 			bestArb.SellPrice.String(),
 			bestArb.Spread.String())
+		
+		// Send profitable arbitrage opportunity
+		e.lastSentArb[symbol] = *bestArb
+		e.notifySubscribers(*bestArb)
 	} else {
-		log.Printf("[%s] Current market data: %s - Buy %s at %s, Sell %s at %s - Spread: $%s (Loss)",
+		// For negative spreads, send no-chance notification instead
+		log.Printf("[%s] No profitable arbitrage for %s - Best spread: $%s (Loss)",
 			now.Format("15:04:05.000"),
 			bestArb.Pair,
-			bestArb.BuyExchange,
-			bestArb.BuyPrice.String(),
-			bestArb.SellExchange,
-			bestArb.SellPrice.String(),
 			bestArb.Spread.String())
+		
+		noChanceData := &types.ArbitrageData{
+			Pair:         symbol,
+			BuyExchange:  "",
+			SellExchange: "",
+			BuyPrice:     decimal.Zero,
+			SellPrice:    decimal.Zero,
+			Amount:       decimal.Zero,
+			Spread:       decimal.Zero,
+			SpreadRatio:  decimal.Zero,
+			Currency:     extractQuoteCurrency(symbol),
+			NoChance:     true,
+		}
+		
+		e.lastSentArb[symbol] = *noChanceData
+		e.notifySubscribers(*noChanceData)
 	}
-
-	// Always update and notify for better UI responsiveness
-	e.lastSentArb[symbol] = *bestArb
-	e.notifySubscribers(*bestArb)
 }
 
 // createArbitrageData creates arbitrage data structure
