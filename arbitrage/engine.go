@@ -110,6 +110,7 @@ func (e *Engine) checkArbitrage(symbol string) {
 		}
 	}
 
+
 	// Try to find arbitrage opportunities with available data (don't wait for all 4 prices)
 	var availableArbitrages []*types.ArbitrageData
 	
@@ -179,6 +180,7 @@ func (e *Engine) checkArbitrage(symbol string) {
 			bestArb.SellPrice.String(),
 			bestArb.Spread.String())
 		
+		
 		// Send profitable arbitrage opportunity
 		e.lastSentArb[symbol] = *bestArb
 		e.notifySubscribers(*bestArb)
@@ -236,6 +238,7 @@ func (e *Engine) createArbitrageData(symbol, buyExchange, sellExchange string, b
 		tradeableAmount = maxAmount
 	}
 
+	// Apply minimum amount for realistic trading
 	if tradeableAmount.LessThan(minAmount) {
 		tradeableAmount = minAmount
 	}
@@ -246,6 +249,7 @@ func (e *Engine) createArbitrageData(symbol, buyExchange, sellExchange string, b
 	sellRevenue := tradeableAmount.Mul(sellPrice)  // sell quantity * sell price
 	buyCost := tradeableAmount.Mul(buyPrice)       // buy quantity * buy price
 	totalProfit := sellRevenue.Sub(buyCost)        // profit = revenue - cost
+
 
 	return &types.ArbitrageData{
 		Pair:         symbol,
